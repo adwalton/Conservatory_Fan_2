@@ -2,6 +2,7 @@
   Conservatory >> Kitchen Fan Controller
   
   13/4/2015 - First draft, using Adafruit display
+  14/4/2015 - Combined ADC sample smoothing into one loop. Added upper temperature for Kitchen; above this the fan is disabled
  ****************************************************/
  //
 #include "SPI.h"
@@ -35,12 +36,13 @@ int kitchenADCValue = 0;
 double conservTemp = 0;
 double kitchenTemp = 0;
 double tempDiff = 0;
-const double fanRateParameter = 50; //Proportional value used to cal fan PMW output based on tempDiff
-int fanPMWOutput = 0;
+double kitchenSetpoint = 19.00; // Temperature at which the fan is stopped completely
+const double fanRateParameter = 50; //Proportional value used to cal fan PWM output based on tempDiff
+int fanPWMOutput = 0;
 int fanPercent = 0;
 int count = 0; //loop counter
 const int smoothNo = 20; // Number of loops used in sensor smoothing
-const int smoothTime = 100; // mS delay between each smoothing ADC sample
+const int smoothTime = 500; // mS delay between each smoothing ADC sample
 //
   // Function to ConvertADC Values to Degrees C
   //
@@ -63,49 +65,70 @@ void setup() {
   Serial.println(F("Done!"));
 }
 void loop(){
-  // Obtain smoothed Conservatory Sensor ADC value
+  // Obtain smoothed Conservatory & Kitchen Sensor ADC values
   conservADCValue = 0;
-  while (count < smoothNo){
-  conservADCValue = conservADCValue + analogRead(conservPin);
-  count = count + 1;
-  delay(smoothTime);
-  }
-  conservADCValue = conservADCValue / smoothNo;
-  count = 0;
-  // Obtain smoothed Kitchen Sensor ADC value
   kitchenADCValue = 0;
   while (count < smoothNo){
+  conservADCValue = conservADCValue + analogRead(conservPin);
   kitchenADCValue = kitchenADCValue + analogRead(kitchenPin);
   count = count + 1;
   delay(smoothTime);
   }
+  conservADCValue = conservADCValue / smoothNo;
   kitchenADCValue = kitchenADCValue / smoothNo;
   count = 0;
   //
   conservTemp = calcTempFromRead(conservADCValue);
   kitchenTemp = calcTempFromRead(kitchenADCValue);
   tempDiff = conservTemp - kitchenTemp;
-  if(tempDiff > 0)
+  if (kitchenTemp < kitchenSetpoint)
   {
-    fanPMWOutput = tempDiff * fanRateParameter;
-    if (fanPMWOutput > 255){
-    fanPMWOutput = 255;
-    tft.setCursor(0,190);
-    tft.setTextColor(ILI9340_BLUE);
-    tft.print("                ");
-    tft.setCursor(0,190);
-    tft.setTextColor(ILI9340_RED);
-    tft.print("Delta-T OVER MAX");
-    delay(1000);
-    tft.setCursor(0,190);
-    tft.print("                ");
+    if(tempDiff > 0)
+    {
+      fanPWMOutput = tempDiff * fanRateParameter;
+      analogWrite(fanOutputPin, fanPWMOutput);
+      fanPercent = (fanPWMOutput * 100) / 255;
+      if (fanPWMOutput > 255){
+        fanPWMOutput = 255;
+        analogWrite(fanOutputPin, fanPWMOutput);
+        fanPercent = (fanPWMOutput * 100) / 255;
+        tft.fillScreen(ILI9340_RED);
+        tft.setTextSize(3);
+        tft.setCursor(15,80);
+        tft.setTextColor(ILI9340_WHITE);
+        tft.println("Delta-T OVER MAX");
+        tft.println(" ");
+        tft.println("   FAN AT 100%");
+        delay(20000);
+      }
+    fanPercent = (fanPWMOutput * 100) / 255;
     }
-    fanPercent = (fanPMWOutput * 100) / 255;
+  else
+  {
+    fanPWMOutput = 0;
+    analogWrite(fanOutputPin, fanPWMOutput);
+    fanPercent = (fanPWMOutput * 100) / 255;
+  }
   }
   else
   {
-    fanPMWOutput = 0;
-  }
+    fanPWMOutput = 0;
+    analogWrite(fanOutputPin, fanPWMOutput);
+    fanPercent = (fanPWMOutput * 100) / 255;
+    tft.fillScreen(ILI9340_RED);
+    tft.setTextSize(3);
+    tft.setCursor(4,60);
+    tft.setTextColor(ILI9340_WHITE);
+    tft.println("   FAN IS OFF");
+    tft.println(" ");
+    tft.println("   Kitchen Temp");
+    tft.println("   Exceeds");
+    tft.println("   SetPoint of");
+    tft.print("   ");
+    tft.print(kitchenSetpoint);
+    tft.print(" C");
+    delay(20000);
+ }
   //
   tft.fillScreen(ILI9340_BLACK);
   tft.setCursor(0, 10);
@@ -130,13 +153,13 @@ void loop(){
   tft.println("");
   //
   tft.setCursor(0, 190);
-  tft.setTextColor(ILI9340_BLUE);  tft.setTextSize(3);
+  tft.setTextColor(ILI9340_YELLOW);  tft.setTextSize(5);
   tft.print("Fan ");
   tft.print(fanPercent);
   tft.print("% ");
-  //tft.print(fanPMWOutput);
+  //tft.print(fanPWMOutput);
   //  
-  delay(5000);
+ // delay(5000);
 
 } // END OF MAIN LOOP
 
