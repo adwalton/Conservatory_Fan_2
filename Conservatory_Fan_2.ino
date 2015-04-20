@@ -47,6 +47,19 @@ int count = 0; //loop counter
 const int smoothNo = 5; // Number of loops used in sensor smoothing
 const int smoothTime = 100; // mS delay between each smoothing ADC sample
 //
+// Set Up Averaging Variables (stolen from Destrat code)
+// 
+const unsigned nRecentDiffs = 40; //Number of recent tempDiff values to store. MUST BE EVEN.
+float recentDiffs[nRecentDiffs]; // Create array to store tempDiff readings
+unsigned recentDiffsIndex = 0; // initialise pointer to tempDiff array
+unsigned recentDiffsInterval = 2000; // time between successive tempDiff readings (ms)
+double newAverageDiff = 0.0f; // variable to store calculated value of most recent tempDiff average
+float oldAverageDiff = 0.0f; // variable to store calculated value of earlier tempDiff average
+float tempDiffGradient = 0.0f; // variable to store calculated rate of change in tempDiff over time 
+const float deltaTime = (float)nRecentDiffs * 0.5f * (float)recentDiffsInterval; // time between old and new average tempDiff measurements - used to calculate the gradient
+unsigned elapsedMillis = 0; // to allow millis function to be used to time sampling rate
+unsigned newMillis = 0; // as above
+//
   // Function to ConvertADC Values to Degrees C
   //
 float calcTempFromReadValue(int readValue);
@@ -57,7 +70,7 @@ float calcTempFromReadValue(int readValue);
   
 Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _rst);
 // initialize the PID Loop
-PID myPID(&tempDiff, &fanPWMOutput, &Setpoint,30,1,0, REVERSE);
+PID myPID(&newAverageDiff, &fanPWMOutput, &Setpoint,50,1,5, REVERSE);
 //
 void setup() {
   Serial.begin(9600);
@@ -71,8 +84,12 @@ void setup() {
   Serial.println(F("Done!"));
   myPID.SetOutputLimits(0, 254); 
   myPID.SetMode(AUTOMATIC); // turn on the PID loop
-  myPID.SetSampleTime(10000); // from PID library - sets sample time to X milliseconds
+  myPID.SetSampleTime(5000); // from PID library - sets sample time to X milliseconds
   //
+  for(unsigned i = 0; i < nRecentDiffs; ++i) // Initiatise array for storing temperature history (used in rolling average calculation)
+  {
+    recentDiffs[i] = 0.0f;
+  }
 }
 void loop(){
   // Obtain smoothed Conservatory & Kitchen Sensor ADC values
@@ -90,7 +107,43 @@ void loop(){
   //
   conservTemp = calcTempFromRead(conservADCValue);
   kitchenTemp = calcTempFromRead(kitchenADCValue);
+  //
   tempDiff = conservTemp - kitchenTemp;
+  //*********************************************************************
+  newMillis = millis();
+  if(newMillis - elapsedMillis > recentDiffsInterval)
+  {
+    recentDiffs[recentDiffsIndex] = tempDiff;
+    recentDiffsIndex = (recentDiffsIndex + 1) % nRecentDiffs;
+    newAverageDiff = oldAverageDiff = 0.0f;
+    for(unsigned i = recentDiffsIndex; i < recentDiffsIndex + (nRecentDiffs / 2); ++i)
+    {
+      oldAverageDiff += recentDiffs[i % nRecentDiffs];
+    }
+    for(unsigned i = recentDiffsIndex + (nRecentDiffs / 2); i < recentDiffsIndex + nRecentDiffs; ++i)
+    {
+      newAverageDiff += recentDiffs[i % nRecentDiffs];
+    }
+    newAverageDiff /= (float)nRecentDiffs * 0.5f;
+    oldAverageDiff /= (float)nRecentDiffs * 0.5f;
+    tempDiffGradient = (newAverageDiff - oldAverageDiff)/deltaTime;
+    
+   // hoursUntilFull = (maxEnergy - energy) / (energyGradient * 3600000.0f);
+    elapsedMillis = newMillis;
+ //   
+    //Print out array
+    Serial.print("Average tempDiff = ");
+    Serial.println(newAverageDiff);
+    Serial.println("Recent tempDiff levels");
+    for(unsigned i = 0; i < nRecentDiffs-1; ++i)
+    {
+      Serial.print(recentDiffs[i]);
+      Serial.print(" ");
+    }
+    Serial.println(" ");
+  }
+  // End of section to calculate rolling average tempDiff
+  //*********************************************************************
   myPID.Compute();
   if (kitchenTemp < kitchenSetpoint)
   {
@@ -153,7 +206,7 @@ void loop(){
   tft.setCursor(0, 130);
   tft.setTextColor(ILI9340_GREEN);  tft.setTextSize(3);
   tft.print("Delta-T  ");
-  tft.print(tempDiff);
+  tft.print(newAverageDiff);
   tft.println(" C");
   tft.println("");
   //
@@ -167,9 +220,9 @@ void loop(){
  // delay(5000);
 
 } // END OF MAIN LOOP
-
+//
 // Function to ConvertADC Values to Degrees C
-  //
+//
   float calcTempFromRead(int readValue) {
     return (((float)readValue * 500.0f) / 1024.0f)-47;
   }
