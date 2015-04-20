@@ -38,14 +38,14 @@ int kitchenADCValue = 0;
 double conservTemp = 0;
 double kitchenTemp = 0;
 double tempDiff = 0;
-double kitchenSetpoint = 19.00; // Temperature at which the fan is stopped completely
-double Setpoint = 0.5; //PID SetPoint 
+double kitchenSetpoint = 18.00; // Temperature at which the fan is stopped completely
+double Setpoint = 0.5; //PID SetPoint - i.e. the value of tempDiff that the algorithm tries to maintain
 const double fanRateParameter = 50; //Proportional value used to cal fan PWM output based on tempDiff
 double fanPWMOutput = 0;
 double fanPercent = 0;
 int count = 0; //loop counter
-const int smoothNo = 20; // Number of loops used in sensor smoothing
-const int smoothTime = 50; // mS delay between each smoothing ADC sample
+const int smoothNo = 5; // Number of loops used in sensor smoothing
+const int smoothTime = 100; // mS delay between each smoothing ADC sample
 //
   // Function to ConvertADC Values to Degrees C
   //
@@ -53,22 +53,23 @@ float calcTempFromReadValue(int readValue);
 //
 // Using software SPI is really not suggested, its incredibly slow
 //Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _mosi, _sclk, _rst, _miso);
-// Use hardware SPI
+// Use hardware SPImyPID.SetMode(AUTOMATIC); // turn on the PID loop
+  
 Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _rst);
 // initialize the PID Loop
-PID myPID(&tempDiff, &fanPWMOutput, &Setpoint,50,1,10, REVERSE);
+PID myPID(&tempDiff, &fanPWMOutput, &Setpoint,30,1,0, REVERSE);
 //
 void setup() {
   Serial.begin(9600);
   while (!Serial);
 //  
   Serial.println("FAN CONTROL SETTING UP"); 
- delay(1000);
+  delay(1000);
   tft.begin();
   tft.setRotation(3);
   //
   Serial.println(F("Done!"));
-  myPID.SetOutputLimits(0, 255); 
+  myPID.SetOutputLimits(0, 254); 
   myPID.SetMode(AUTOMATIC); // turn on the PID loop
   myPID.SetSampleTime(10000); // from PID library - sets sample time to X milliseconds
   //
@@ -90,14 +91,14 @@ void loop(){
   conservTemp = calcTempFromRead(conservADCValue);
   kitchenTemp = calcTempFromRead(kitchenADCValue);
   tempDiff = conservTemp - kitchenTemp;
+  myPID.Compute();
   if (kitchenTemp < kitchenSetpoint)
   {
-      myPID.Compute();
       analogWrite(fanOutputPin, fanPWMOutput);
-      fanPercent = (fanPWMOutput * 100) / 255;
-      if (fanPWMOutput > 254){
+      fanPercent = (fanPWMOutput * 100) / 254;
+      if (fanPWMOutput > 253){
         analogWrite(fanOutputPin, fanPWMOutput);
-        fanPercent = (fanPWMOutput * 100) / 255;
+        fanPercent = (fanPWMOutput * 100) / 254;
         tft.fillScreen(ILI9340_RED);
         tft.setTextSize(3);
         tft.setCursor(15,80);
@@ -108,14 +109,16 @@ void loop(){
         delay(4000);
       }
       else
-      { //do nothing
+      { 
+        analogWrite(fanOutputPin, fanPWMOutput);
+        fanPercent = (fanPWMOutput * 100) / 254;
       }
    }
   else // kitchenTemp is above maximum allowed so turn Fan OFF
   {
-    fanPWMOutput = 0;
+    fanPWMOutput = 0; 
     analogWrite(fanOutputPin, fanPWMOutput);
-    fanPercent = (fanPWMOutput * 100) / 255;
+    fanPercent = (fanPWMOutput * 100) / 254;
     // Display Status
     tft.fillScreen(ILI9340_RED);
     tft.setTextSize(3);
