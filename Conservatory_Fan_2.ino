@@ -38,7 +38,7 @@ int kitchenADCValue = 0;
 double conservTemp = 0;
 double kitchenTemp = 0;
 double tempDiff = 0;
-double kitchenSetpoint = 18.00; // Temperature at which the fan is stopped completely
+double kitchenSetpoint = 17.00; // Temperature at which the fan is stopped completely
 double Setpoint = 0.5; //PID SetPoint - i.e. the value of tempDiff that the algorithm tries to maintain
 const double fanRateParameter = 50; //Proportional value used to cal fan PWM output based on tempDiff
 double fanPWMOutput = 0;
@@ -70,7 +70,7 @@ float calcTempFromReadValue(int readValue);
   
 Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _rst);
 // initialize the PID Loop
-PID myPID(&newAverageDiff, &fanPWMOutput, &Setpoint,50,1,5, REVERSE);
+PID myPID(&newAverageDiff, &fanPWMOutput, &Setpoint,50,0.5,5, REVERSE);
 //
 void setup() {
   Serial.begin(9600);
