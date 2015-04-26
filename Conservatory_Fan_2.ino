@@ -4,6 +4,7 @@
   13/4/2015 - First draft, using Adafruit display
   14/4/2015 - Combined ADC sample smoothing into one loop. Added upper temperature for Kitchen; above this the fan is disabled
   16/4/2015 - Added analogWrite to control the fan via PWM
+  26/4/2015 - Changed range of PID to start at 30% rather than 0%
  ****************************************************/
  //
 #include <PID_v1.h>
@@ -40,19 +41,19 @@ double kitchenTemp = 0;
 double tempDiff = 0;
 double kitchenSetpoint = 17.00; // Temperature at which the fan is stopped completely
 double Setpoint = 0.5; //PID SetPoint - i.e. the value of tempDiff that the algorithm tries to maintain
-const double fanRateParameter = 50; //Proportional value used to cal fan PWM output based on tempDiff
+const double lowestFanSpeed = 80; //PWM Value just below when the fan actually starts to turn
 double fanPWMOutput = 0;
 double fanPercent = 0;
 int count = 0; //loop counter
-const int smoothNo = 5; // Number of loops used in sensor smoothing
-const int smoothTime = 100; // mS delay between each smoothing ADC sample
+const int smoothNo = 50; // Number of loops used in temp sensor smoothing
+const int smoothTime = 80; // mS delay between each smoothing ADC sample
 //
 // Set Up Averaging Variables (stolen from Destrat code)
 // 
-const unsigned nRecentDiffs = 40; //Number of recent tempDiff values to store. MUST BE EVEN.
+const unsigned nRecentDiffs = 80; //Number of recent tempDiff values to store. MUST BE EVEN.
 float recentDiffs[nRecentDiffs]; // Create array to store tempDiff readings
 unsigned recentDiffsIndex = 0; // initialise pointer to tempDiff array
-unsigned recentDiffsInterval = 2000; // time between successive tempDiff readings (ms)
+unsigned recentDiffsInterval = 10000; // time between successive tempDiff readings (ms)
 double newAverageDiff = 0.0f; // variable to store calculated value of most recent tempDiff average
 float oldAverageDiff = 0.0f; // variable to store calculated value of earlier tempDiff average
 float tempDiffGradient = 0.0f; // variable to store calculated rate of change in tempDiff over time 
@@ -82,9 +83,9 @@ void setup() {
   tft.setRotation(3);
   //
   Serial.println(F("Done!"));
-  myPID.SetOutputLimits(0, 254); 
+  myPID.SetOutputLimits(lowestFanSpeed, 254); // set lower limit to 30% of full power (point at which fan actually starts to turn) 
   myPID.SetMode(AUTOMATIC); // turn on the PID loop
-  myPID.SetSampleTime(5000); // from PID library - sets sample time to X milliseconds
+  myPID.SetSampleTime(10000); // from PID library - sets sample time to X milliseconds 
   //
   for(unsigned i = 0; i < nRecentDiffs; ++i) // Initiatise array for storing temperature history (used in rolling average calculation)
   {
@@ -145,24 +146,20 @@ void loop(){
   // End of section to calculate rolling average tempDiff
   //*********************************************************************
   myPID.Compute();
+  // If fan level is at lower limit, set output to zero to cut power completely
+  //if (fanPWMOutput = lowestFanSpeed)
+  //{
+  //  fanPWMOutput = 0;
+  //}
   if (kitchenTemp < kitchenSetpoint)
   {
-      analogWrite(fanOutputPin, fanPWMOutput);
-      fanPercent = (fanPWMOutput * 100) / 254;
-      if (fanPWMOutput > 253){
+      if (newAverageDiff < Setpoint){
+        fanPWMOutput = 0; 
         analogWrite(fanOutputPin, fanPWMOutput);
         fanPercent = (fanPWMOutput * 100) / 254;
-        tft.fillScreen(ILI9340_RED);
-        tft.setTextSize(3);
-        tft.setCursor(15,80);
-        tft.setTextColor(ILI9340_WHITE);
-        tft.println("Delta-T OVER MAX");
-        tft.println(" ");
-        tft.println("   FAN AT 100%");
-        delay(4000);
       }
       else
-      { 
+      {
         analogWrite(fanOutputPin, fanPWMOutput);
         fanPercent = (fanPWMOutput * 100) / 254;
       }
