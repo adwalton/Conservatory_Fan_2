@@ -71,7 +71,7 @@ float calcTempFromReadValue(int readValue);
   
 Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _rst);
 // initialize the PID Loop
-PID myPID(&newAverageDiff, &fanPWMOutput, &Setpoint,50,0.5,5, REVERSE);
+PID myPID(&newAverageDiff, &fanPWMOutput, &Setpoint,130,0,50, REVERSE);
 //
 void setup() {
   Serial.begin(9600);
